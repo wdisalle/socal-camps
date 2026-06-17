@@ -16,12 +16,6 @@ function formatDate(dateStr) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function monthKey(date) {
-  // Recreation.gov expects: YYYY-MM-01T00:00:00.000Z
-  const d = new Date(date);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01T00:00:00.000Z`;
-}
-
 async function fetchSeasonalBirds(eBirdHotspot, dateStr) {
   if (!EBIRD_KEY || !dateStr) return [];
   try {
@@ -71,11 +65,6 @@ function AvailBadge({ type }) {
     </div>
   );
 }
-// Fetch availability for each Recreation.gov campground
-data.filter(c => c.reservationType === "recreation.gov").forEach(async c => {
-  const result = await fetchAvailability(c.facilityId);
-  setAvailability(prev => ({ ...prev, [c.id]: result }));
-});
 
 // ─── CAMP CARD ────────────────────────────────────────────────────────────────
 function CampCard({ camp, avail, onExpand, expanded, eBirdKey }) {
@@ -130,7 +119,7 @@ function CampCard({ camp, avail, onExpand, expanded, eBirdKey }) {
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <AvailBadge status={avail?.status} nextAvailable={avail?.nextAvailable} type={camp.reservationType} />
+            <AvailBadge type={camp.reservationType} />
             <div style={{ fontSize: 18, marginTop: 4 }}>{expanded ? "▲" : "▼"}</div>
           </div>
         </div>
@@ -234,27 +223,15 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   // Load campground data
-  useEffect(() => {
-    fetch("/campgrounds.json")
-      .then(r => r.json())
-      .then(data => {
-        setCamps(data);
-        setLoading(false);
-        // Mark all Recreation.gov sites as loading
-        const init = {};
-        data.forEach(c => {
-          if (c.reservationType === "recreation.gov") init[c.id] = { status: "loading" };
-          else init[c.id] = { status: "manual" };
-        });
-        setAvailability(init);
-        // Fetch availability for each Recreation.gov campground
-        data.filter(c => c.reservationType === "recreation.gov").forEach(async c => {
-          const result = await fetchAvailability(c.facilityId);
-          setAvailability(prev => ({ ...prev, [c.id]: result }));
-        });
-      })
-      .catch(() => setLoading(false));
-  }, []);
+useEffect(() => {
+  fetch("/campgrounds.json")
+    .then(r => r.json())
+    .then(data => {
+      setCamps(data);
+      setLoading(false);
+    })
+    .catch(() => setLoading(false));
+}, []);
 
   const handleExpand = useCallback((id) => {
     setExpanded(prev => prev === id ? null : id);
