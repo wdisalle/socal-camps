@@ -22,47 +22,6 @@ function monthKey(date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01T00:00:00.000Z`;
 }
 
-function getDaysToCheck() {
-  // Next 60 days split into monthly chunks
-  const months = [];
-  const now = new Date();
-  const seen = new Set();
-  for (let i = 0; i < 180; i++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() + i);
-    const key = monthKey(d);
-    if (!seen.has(key)) { seen.add(key); months.push(key); }
-  }
-  return months;
-}
-
-async function fetchAvailability(facilityId) {
-  const months = getDaysToCheck();
-  const available = [];
-  try {
-    for (const startDate of months) {
-      const url = `${REC_AVAIL_URL(facilityId)}?start_date=${startDate}`;
-      const res = await fetch(url, {
-        headers: { "Accept": "application/json" }
-      });
-      if (!res.ok) continue;
-      const data = await res.json();
-      // data.campsites is an object keyed by site ID
-      for (const [, site] of Object.entries(data.campsites || {})) {
-        for (const [date, status] of Object.entries(site.availabilities || {})) {
-          if (status === "Available") {
-            available.push(date.substring(0, 10));
-          }
-        }
-      }
-    }
-    const sorted = [...new Set(available)].sort();
-    return { status: "ok", nextAvailable: sorted[0] || null, availableDates: sorted };
-  } catch {
-    return { status: "error", nextAvailable: null, availableDates: [] };
-  }
-}
-
 async function fetchSeasonalBirds(eBirdHotspot, dateStr) {
   if (!EBIRD_KEY || !dateStr) return [];
   try {
@@ -105,23 +64,18 @@ const amenityFilters = [
 ];
 
 // ─── AVAILABILITY BADGE ───────────────────────────────────────────────────────
-function AvailBadge({ status, nextAvailable, type }) {
-  if (type === "manual") {
-    return (
-      <div style={{ fontSize: 11, color: "#8a7a6a", fontStyle: "italic" }}>
-        Check site for availability
-      </div>
-    );
-  }
-  if (status === "loading") return <div style={{ fontSize: 11, color: "#8a7a6a" }}>Checking availability…</div>;
-  if (status === "error") return <div style={{ fontSize: 11, color: "#c0392b" }}>Could not load availability</div>;
-  if (!nextAvailable) return <div style={{ fontSize: 11, color: "#c0392b" }}>No availability in next 180 days</div>;
+function AvailBadge({ type }) {
   return (
-    <div style={{ fontSize: 12, fontWeight: 700, color: "#4a7c59" }}>
-      🟢 Next available: {formatDate(nextAvailable)}
+    <div style={{ fontSize: 11, color: "#8a7a6a", fontStyle: "italic" }}>
+      Check site for availability
     </div>
   );
 }
+// Fetch availability for each Recreation.gov campground
+data.filter(c => c.reservationType === "recreation.gov").forEach(async c => {
+  const result = await fetchAvailability(c.facilityId);
+  setAvailability(prev => ({ ...prev, [c.id]: result }));
+});
 
 // ─── CAMP CARD ────────────────────────────────────────────────────────────────
 function CampCard({ camp, avail, onExpand, expanded, eBirdKey }) {
@@ -216,7 +170,7 @@ function CampCard({ camp, avail, onExpand, expanded, eBirdKey }) {
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {camp.birds.map(b => (
                 <a key={b.name}
-                  href={`https://merlin.allaboutbirds.org/the-only-one/?species=${encodeURIComponent(b.sciName)}`}
+                  href={`https://www.audubon.org/field-guide/bird/${b.name.toLowerCase().replace(/['']/g, "").replace(/\s+/g, "-")}`}
                   target="_blank" rel="noopener noreferrer"
                   style={{ fontSize: 11, padding: "4px 10px", borderRadius: 20, background: "#1a3a6a", color: "#fff", textDecoration: "none", fontWeight: 600 }}>
                   🐦 {b.name}
@@ -253,24 +207,7 @@ function CampCard({ camp, avail, onExpand, expanded, eBirdKey }) {
             </div>
           )}
 
-          {/* Availability dates */}
-          {!isManual && avail?.availableDates?.length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 10, letterSpacing: 3, textTransform: "uppercase", color: "#8a7a6a", marginBottom: 8 }}>
-                Available Dates (Next 180 Days)
-              </div>
-              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                {avail.availableDates.slice(0, 20).map(d => (
-                  <span key={d} style={{ fontSize: 10, padding: "3px 8px", borderRadius: 20, background: "#4a7c5920", color: "#4a7c59", fontWeight: 600 }}>
-                    {formatDate(d)}
-                  </span>
-                ))}
-                {avail.availableDates.length > 20 && (
-                  <span style={{ fontSize: 10, color: "#8a7a6a" }}>+{avail.availableDates.length - 20} more</span>
-                )}
-              </div>
-            </div>
-          )}
+
 
           {/* CTA Button */}
           <a href={camp.reservationUrl} target="_blank" rel="noopener noreferrer"
@@ -394,7 +331,7 @@ export default function App() {
 
         {/* LEGEND */}
         <div style={{ display: "flex", gap: 14, fontSize: 11, color: "#8a7a6a", marginBottom: 12, flexWrap: "wrap" }}>
-          <span>⛺ Recreation.gov — live availability shown</span>
+          <span>⛺ Recreation.gov — click Reserve button for live availability</span>
           <span>🏞️ OC Parks — manual reservation link</span>
         </div>
 
